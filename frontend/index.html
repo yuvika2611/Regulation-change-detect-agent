@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>ComplianceAI</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet"/>
+<style>
+  *{box-sizing:border-box}
+  body{background:#0f1117;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0}
+  .card{background:#1a1f2e;border:1px solid rgba(255,255,255,0.07);border-radius:12px}
+  .urgent-border{border-left:3px solid #ef4444}
+  .monitor-border{border-left:3px solid #f59e0b}
+  .info-border{border-left:3px solid #22c55e}
+  input,select,textarea{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:8px 12px;color:#e2e8f0;font-size:13px;width:100%;outline:none}
+  input:focus,select:focus,textarea:focus{border-color:rgba(99,102,241,0.5)}
+  .btn{padding:8px 16px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all 0.15s}
+  .btn-primary{background:rgba(99,102,241,0.2);border:1px solid rgba(99,102,241,0.4);color:#818cf8}
+  .btn-primary:hover{background:rgba(99,102,241,0.35)}
+  .btn-success{background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.3);color:#22c55e}
+  .btn-danger{background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#ef4444}
+  .btn-warning{background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.3);color:#f59e0b}
+  ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:#1a1f2e}::-webkit-scrollbar-thumb{background:#374151;border-radius:2px}
+</style>
+</head>
+<body><div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useCallback}=React;
+const API="http://localhost:8000";
+
+const MOCK={
+  stats:{total_publications:47,urgent_items:2,pending_reviews:3,active_clients:3,
+         total_digests:12,open_checklists:8,total_arr:50000,
+         by_source:[{source:"Federal Register",count:18},{source:"OCC",count:12},{source:"SEC",count:9},{source:"FinCEN",count:5},{source:"NAIC",count:3}],
+         by_urgency:[{urgency:"URGENT",count:2},{urgency:"MONITOR",count:8},{urgency:"INFORMATIONAL",count:37}]},
+  publications:[
+    {id:1,pub_id:"abc1",source:"OCC",urgency:"URGENT",review_status:"pending",
+     title:"OCC Bulletin 2026-12: Third-Party Risk Management Requirements Updated",
+     summary:"OCC requires all national banks to implement enhanced due diligence for third-party relationships. Banks must update vendor agreements, establish new board reporting cadence, and certify compliance by June 30 2026.",
+     teams:"Compliance, Legal, Operations, IT",deadline:"June 30, 2026",confidence:"high",
+     checklist:["Update all third-party vendor agreements to include new data sharing clauses","Present updated third-party risk framework to board by April 30","Certify compliance in writing to OCC examiner"],
+     url:"https://www.occ.gov",fetched_at:"2026-03-28T07:15:00"},
+    {id:2,pub_id:"abc2",source:"Federal Register",urgency:"URGENT",review_status:"auto-approved",
+     title:"CFPB Final Rule: Small Business Lending Data Collection — Effective May 2026",
+     summary:"CFPB finalizes expanded data collection under Section 1071. Covered financial institutions must begin collecting 20+ data fields on small business loan applications. Compliance date is May 1 2026.",
+     teams:"Compliance, Legal, Operations, Finance",deadline:"May 1, 2026",confidence:"high",
+     checklist:["Update loan origination systems to capture all 20 required data fields","Train underwriting staff on new collection requirements","File first quarterly report to CFPB by July 31 2026"],
+     url:"https://www.federalregister.gov",fetched_at:"2026-03-28T07:15:00"},
+    {id:3,pub_id:"abc3",source:"NAIC",urgency:"MONITOR",review_status:"pending",
+     title:"NAIC Model Bulletin: AI Use in Insurance Underwriting and Claims",
+     summary:"NAIC adopts model bulletin requiring insurers to document all AI/ML models used in underwriting, claims handling, and pricing. States expected to adopt by end of 2026.",
+     teams:"Compliance, Actuarial, IT, Legal",deadline:null,confidence:"medium",
+     checklist:["Inventory all AI/ML models used in underwriting and claims","Create documentation for each model including training data and validation approach","Assign model risk officer responsibility"],
+     url:"https://content.naic.org",fetched_at:"2026-03-28T07:15:00"},
+    {id:4,pub_id:"abc4",source:"FinCEN",urgency:"INFORMATIONAL",review_status:"approved",
+     title:"FinCEN Updated FAQs: Beneficial Ownership Reporting Under CTA",
+     summary:"FinCEN clarifies several common questions about Corporate Transparency Act reporting obligations. No new requirements — guidance on existing rules only. No action required.",
+     teams:"Compliance",deadline:null,confidence:"high",
+     checklist:["File for awareness only — share FAQ link with compliance team"],
+     url:"https://www.fincen.gov",fetched_at:"2026-03-28T07:15:00"},
+  ],
+  clients:[
+    {id:1,company_name:"Midwest Regional Insurance",contact_name:"Sarah Chen",contact_email:"s.chen@midwest.com",plan:"professional",industry:"insurance",status:"active",annual_value:20000,renewal_date:"2027-01-15"},
+    {id:2,company_name:"First Community Bank",contact_name:"James Walker",contact_email:"j.walker@fcbank.com",plan:"starter",industry:"banking",status:"active",annual_value:10000,renewal_date:"2027-03-01"},
+    {id:3,company_name:"Heritage Life & Annuity",contact_name:"Maria Santos",contact_email:"m.santos@heritage.com",plan:"professional",industry:"insurance",status:"active",annual_value:20000,renewal_date:"2027-02-10"},
+  ],
+  audit:[
+    {id:1,event_type:"CHECK_COMPLETE",actor:"scheduler",details:"4 publications, email=sent",created_at:"2026-03-28T07:16:00"},
+    {id:2,event_type:"REVIEW_SUBMITTED",pub_id:"abc2",actor:"admin",details:"Decision: approved",created_at:"2026-03-28T08:00:00"},
+    {id:3,event_type:"CLIENT_ADDED",actor:"admin",details:"company=Heritage Life & Annuity",created_at:"2026-03-20T14:30:00"},
+    {id:4,event_type:"EMAIL_SENT",actor:"system",details:"4 publications, email=sent",created_at:"2026-03-28T07:16:00"},
+  ]
+};
+
+// ── Utilities ─────────────────────────────────
+const URGENCY_COLOR={URGENT:"#ef4444",MONITOR:"#f59e0b",INFORMATIONAL:"#22c55e"};
+const URGENCY_EMOJI={URGENT:"🔴",MONITOR:"🟡",INFORMATIONAL:"🟢"};
+const PLAN_COLOR={starter:"#60a5fa",professional:"#a78bfa",enterprise:"#34d399"};
+const STATUS_COLOR={approved:"#22c55e","auto-approved":"#22c55e",pending:"#f59e0b",rejected:"#ef4444"};
+
+function Badge({label,color,bg}){
+  return <span style={{background:bg||`${color}20`,color,fontSize:11,padding:"2px 8px",borderRadius:4,fontWeight:600,whiteSpace:"nowrap"}}>{label}</span>;
+}
+function UrgencyBadge({urgency}){
+  const c=URGENCY_COLOR[urgency]||"#22c55e";
+  return <Badge label={`${URGENCY_EMOJI[urgency]} ${urgency}`} color={c}/>;
+}
+function StatCard({label,value,sub,color="#818cf8",onClick}){
+  return(
+    <div className="card p-4" style={{cursor:onClick?"pointer":"default"}} onClick={onClick}>
+      <div style={{fontSize:10,color:"#6b7280",letterSpacing:"0.1em",marginBottom:6}}>{label.toUpperCase()}</div>
+      <div style={{fontSize:28,fontWeight:700,color}}>{value}</div>
+      {sub&&<div style={{fontSize:11,color:"#6b7280",marginTop:3}}>{sub}</div>}
+    </div>
+  );
+}
+
+// ── Publication Card ──────────────────────────
+function PubCard({pub,onReview}){
+  const [expanded,setExpanded]=useState(false);
+  const c=URGENCY_COLOR[pub.urgency]||"#22c55e";
+  const reviewColor=STATUS_COLOR[pub.review_status]||"#6b7280";
+  return(
+    <div className={`card ${pub.urgency.toLowerCase()}-border mb-3`} style={{padding:"16px 18px"}}>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
+        <UrgencyBadge urgency={pub.urgency}/>
+        <Badge label={pub.source} color="#818cf8"/>
+        <Badge label={`Review: ${pub.review_status}`} color={reviewColor}/>
+        {pub.confidence&&<Badge label={`AI: ${pub.confidence}`} color={pub.confidence==="high"?"#22c55e":pub.confidence==="medium"?"#f59e0b":"#ef4444"}/>}
+        <span style={{marginLeft:"auto",fontSize:11,color:"#6b7280"}}>
+          {new Date(pub.fetched_at).toLocaleDateString()}
+        </span>
+      </div>
+      <p style={{fontWeight:600,fontSize:14,color:"#f1f5f9",margin:"0 0 6px",cursor:"pointer"}}
+         onClick={()=>setExpanded(!expanded)}>{pub.title}</p>
+      <p style={{fontSize:13,color:"#94a3b8",lineHeight:1.6,margin:"0 0 8px"}}>{pub.summary}</p>
+
+      {expanded&&(
+        <>
+          {pub.checklist&&pub.checklist.length>0&&(
+            <div style={{background:"rgba(0,0,0,0.2)",borderRadius:6,padding:"10px 14px",marginBottom:10}}>
+              <p style={{fontSize:11,color:"#6b7280",margin:"0 0 6px",letterSpacing:"0.08em"}}>ACTION CHECKLIST</p>
+              {pub.checklist.map((item,i)=>(
+                <div key={i} style={{display:"flex",gap:8,alignItems:"flex-start",marginBottom:4}}>
+                  <span style={{color:c,fontSize:13}}>✓</span>
+                  <span style={{fontSize:13,color:"#d1d5db",lineHeight:1.5}}>{item}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {pub.impact&&<p style={{fontSize:12,color:"#6b7280",margin:"0 0 8px"}}><strong style={{color:"#94a3b8"}}>Impact:</strong> {pub.impact}</p>}
+        </>
+      )}
+
+      <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
+        {pub.teams&&<span style={{fontSize:12,color:"#6b7280"}}>👥 <span style={{color:"#a5b4fc"}}>{pub.teams}</span></span>}
+        {pub.deadline&&<span style={{fontSize:12,color:"#fbbf24"}}>⏰ {pub.deadline}</span>}
+        <button onClick={()=>setExpanded(!expanded)} className="btn btn-primary" style={{padding:"4px 10px",fontSize:11,marginLeft:"auto"}}>
+          {expanded?"Collapse ▲":"Expand ▼"}
+        </button>
+        {pub.url&&<a href={pub.url} target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:"#60a5fa",textDecoration:"none"}}>Source →</a>}
+        {onReview&&pub.review_status==="pending"&&(
+          <button onClick={()=>onReview(pub)} className="btn btn-warning" style={{padding:"4px 10px",fontSize:11}}>Review</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Review Modal ──────────────────────────────
+function ReviewModal({pub,onClose,onSubmit}){
+  const [decision,setDecision]=useState("approved");
+  const [notes,setNotes]=useState("");
+  const [corrSummary,setCorrSummary]=useState(pub.summary||"");
+  const [corrUrgency,setCorrUrgency]=useState(pub.urgency||"INFORMATIONAL");
+  const [corrTeams,setCorrTeams]=useState(pub.teams||"");
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
+      <div className="card" style={{width:600,maxHeight:"80vh",overflow:"auto",padding:24}}>
+        <h3 style={{margin:"0 0 16px",fontSize:16}}>Review Publication</h3>
+        <p style={{fontSize:13,color:"#94a3b8",marginBottom:16}}>{pub.title}</p>
+
+        <label style={{fontSize:11,color:"#6b7280",display:"block",marginBottom:4}}>DECISION</label>
+        <select value={decision} onChange={e=>setDecision(e.target.value)} style={{marginBottom:14}}>
+          <option value="approved">Approve — analysis is correct, send to clients</option>
+          <option value="corrected">Correct — fix the analysis before sending</option>
+          <option value="rejected">Reject — not relevant, do not send</option>
+        </select>
+
+        {decision==="corrected"&&(
+          <>
+            <label style={{fontSize:11,color:"#6b7280",display:"block",marginBottom:4}}>CORRECTED SUMMARY</label>
+            <textarea value={corrSummary} onChange={e=>setCorrSummary(e.target.value)}
+              rows={3} style={{marginBottom:10,resize:"vertical"}}/>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+              <div>
+                <label style={{fontSize:11,color:"#6b7280",display:"block",marginBottom:4}}>URGENCY</label>
+                <select value={corrUrgency} onChange={e=>setCorrUrgency(e.target.value)}>
+                  <option>URGENT</option><option>MONITOR</option><option>INFORMATIONAL</option>
+                </select>
+              </div>
+              <div>
+                <label style={{fontSize:11,color:"#6b7280",display:"block",marginBottom:4}}>TEAMS</label>
+                <input value={corrTeams} onChange={e=>setCorrTeams(e.target.value)}
+                  placeholder="Compliance, Legal, IT"/>
+              </div>
+            </div>
+          </>
+        )}
+
+        <label style={{fontSize:11,color:"#6b7280",display:"block",marginBottom:4}}>NOTES (optional)</label>
+        <textarea value={notes} onChange={e=>setNotes(e.target.value)}
+          rows={2} placeholder="Any comments for the record..." style={{marginBottom:16,resize:"vertical"}}/>
+
+        <div style={{display:"flex",gap:10}}>
+          <button className="btn btn-success" onClick={()=>onSubmit({
+            pub_id:pub.pub_id,reviewer:"admin",decision,notes,
+            corrected_summary:decision==="corrected"?corrSummary:undefined,
+            corrected_urgency:decision==="corrected"?corrUrgency:undefined,
+            corrected_teams:decision==="corrected"?corrTeams:undefined,
+          })}>Submit Review</button>
+          <button className="btn" style={{background:"none",border:"1px solid rgba(255,255,255,0.1)",color:"#6b7280"}}
+            onClick={onClose}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main App ──────────────────────────────────
+function App(){
+  const [tab,setTab]=useState("dashboard");
+  const [stats,setStats]=useState(MOCK.stats);
+  const [pubs,setPubs]=useState(MOCK.publications);
+  const [clients,setClients]=useState(MOCK.clients);
+  const [audit,setAudit]=useState(MOCK.audit);
+  const [running,setRunning]=useState(false);
+  const [filter,setFilter]=useState("ALL");
+  const [reviewPub,setReviewPub]=useState(null);
+  const [showAddClient,setShowAddClient]=useState(false);
+  const [newClient,setNewClient]=useState({company_name:"",contact_name:"",contact_email:"",plan:"starter",industry:"insurance",annual_value:10000,slack_webhook:"",notes:""});
+  const [checklistTeam,setChecklistTeam]=useState("ALL");
+  const [apiError,setApiError]=useState(false);
+
+  // Try real API, fall back to mock silently
+  async function apiFetch(path){
+    try{
+      const r=await fetch(`${API}${path}`,{signal:AbortSignal.timeout(2000)});
+      if(!r.ok) return null;
+      return await r.json();
+    }catch{ setApiError(true); return null; }
+  }
+
+  useEffect(()=>{
+    (async()=>{
+      const s=await apiFetch("/api/stats"); if(s) setStats(s);
+      const p=await apiFetch("/api/publications?limit=50"); if(p) setPubs(p);
+      const c=await apiFetch("/api/clients"); if(c) setClients(c);
+      const a=await apiFetch("/api/audit?limit=50"); if(a) setAudit(a);
+    })();
+  },[]);
+
+  async function triggerCheck(){
+    setRunning(true);
+    try{
+      await fetch(`${API}/api/run-check`,{method:"POST"});
+      setTimeout(()=>{setRunning(false);alert("✅ Check complete! Refresh the page to see new publications.");},4000);
+    }catch{ setRunning(false); alert("⚠️ Backend not running. Start it: uvicorn backend.main:app --port 8000"); }
+  }
+
+  async function handleReview(data){
+    try{
+      await fetch(`${API}/api/reviews/${data.pub_id}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});
+    }catch{}
+    setPubs(prev=>prev.map(p=>p.pub_id===data.pub_id
+      ?{...p,review_status:data.decision,summary:data.corrected_summary||p.summary,urgency:data.corrected_urgency||p.urgency}:p));
+    setReviewPub(null);
+  }
+
+  async function addClient(){
+    try{ await fetch(`${API}/api/clients`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(newClient)}); }catch{}
+    setClients(prev=>[...prev,{...newClient,id:Date.now(),status:"active",created_at:new Date().toISOString()}]);
+    setShowAddClient(false);
+    setNewClient({company_name:"",contact_name:"",contact_email:"",plan:"starter",industry:"insurance",annual_value:10000,slack_webhook:"",notes:""});
+  }
+
+  const filteredPubs=filter==="ALL"?pubs:pubs.filter(p=>p.urgency===filter);
+  const pendingReviews=pubs.filter(p=>p.review_status==="pending");
+  const totalARR=clients.reduce((s,c)=>s+(c.annual_value||0),0);
+  const allChecklists=pubs.flatMap(p=>(p.checklist||[]).map((item,i)=>({id:`${p.pub_id}-${i}`,pub_id:p.pub_id,pub_title:p.title,source:p.source,urgency:p.urgency,teams:p.teams,item,completed:false,due_date:p.deadline})));
+  const filteredChecklists=checklistTeam==="ALL"?allChecklists:allChecklists.filter(c=>c.teams&&c.teams.includes(checklistTeam));
+
+  const TABS=[
+    {id:"dashboard",label:"📊 Dashboard"},
+    {id:"publications",label:`📋 Publications${filteredPubs.length>0?` (${filteredPubs.length})`:"" }`},
+    {id:"review",label:`🔍 Review Queue${pendingReviews.length>0?` (${pendingReviews.length})`:"" }`},
+    {id:"checklists",label:`✅ Checklists`},
+    {id:"clients",label:"👥 Clients"},
+    {id:"audit",label:"📁 Audit Trail"},
+  ];
+
+  return(
+    <div>
+      {reviewPub&&<ReviewModal pub={reviewPub} onClose={()=>setReviewPub(null)} onSubmit={handleReview}/>}
+
+      {/* Nav */}
+      <nav style={{background:"#0d1117",borderBottom:"1px solid rgba(255,255,255,0.07)",padding:"0 28px",display:"flex",alignItems:"center",gap:4,height:54,position:"sticky",top:0,zIndex:100}}>
+        <div style={{fontWeight:700,fontSize:15,color:"#fff",marginRight:20}}>⚖️ ComplianceAI</div>
+        {TABS.map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{
+            background:tab===t.id?"rgba(99,102,241,0.15)":"none",
+            border:"none",color:tab===t.id?"#818cf8":"#6b7280",
+            padding:"8px 14px",borderRadius:6,cursor:"pointer",fontSize:13,
+            fontWeight:tab===t.id?600:400,whiteSpace:"nowrap"
+          }}>{t.label}</button>
+        ))}
+        <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:12}}>
+          {apiError&&<span style={{fontSize:11,color:"#f59e0b"}}>⚠️ Demo mode</span>}
+          <span style={{fontSize:13,color:"#6b7280"}}>ARR</span>
+          <span style={{fontSize:15,fontWeight:700,color:"#34d399"}}>${totalARR.toLocaleString()}</span>
+          <button onClick={triggerCheck} disabled={running} className="btn btn-primary">
+            {running?"⏳ Running...":"⚡ Run Check"}
+          </button>
+        </div>
+      </nav>
+
+      <div style={{padding:"24px 28px",maxWidth:1200,margin:"0 auto"}}>
+
+        {/* DASHBOARD */}
+        {tab==="dashboard"&&(
+          <>
+            <h2 style={{fontSize:20,fontWeight:700,marginBottom:20}}>Overview
+              <span style={{fontSize:12,color:"#6b7280",fontWeight:400,marginLeft:10}}>
+                {new Date().toLocaleDateString("en-US",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}
+              </span>
+            </h2>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:24}}>
+              <StatCard label="Urgent Items"    value={stats.urgent_items}    sub="action required"     color="#ef4444" onClick={()=>{setTab("publications");setFilter("URGENT")}}/>
+              <StatCard label="Pending Reviews" value={stats.pending_reviews} sub="need human check"    color="#f59e0b" onClick={()=>setTab("review")}/>
+              <StatCard label="Open Checklists" value={stats.open_checklists} sub="tasks not completed"  color="#818cf8" onClick={()=>setTab("checklists")}/>
+              <StatCard label="Annual ARR"      value={`$${totalARR.toLocaleString()}`} sub={`${stats.active_clients} active clients`} color="#34d399" onClick={()=>setTab("clients")}/>
+            </div>
+
+            <h3 style={{fontSize:15,fontWeight:600,marginBottom:12}}>🔴 Urgent — Immediate Action Required</h3>
+            {pubs.filter(p=>p.urgency==="URGENT").length===0
+              ?<div className="card p-4" style={{color:"#6b7280",fontSize:13}}>No urgent items today. ✅</div>
+              :pubs.filter(p=>p.urgency==="URGENT").map(p=><PubCard key={p.id} pub={p} onReview={setReviewPub}/>)}
+
+            <h3 style={{fontSize:15,fontWeight:600,margin:"24px 0 12px"}}>📡 Coverage by Source</h3>
+            <div className="card p-5">
+              {(stats.by_source||[]).map(s=>(
+                <div key={s.source} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
+                  <span style={{width:160,fontSize:13,color:"#94a3b8"}}>{s.source}</span>
+                  <div style={{flex:1,background:"rgba(255,255,255,0.05)",borderRadius:4,height:7}}>
+                    <div style={{width:`${(s.count/stats.total_publications)*100}%`,background:"#6366f1",borderRadius:4,height:7,transition:"width 0.5s"}}/>
+                  </div>
+                  <span style={{width:24,fontSize:13,color:"#818cf8",textAlign:"right"}}>{s.count}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* PUBLICATIONS */}
+        {tab==="publications"&&(
+          <>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18}}>
+              <h2 style={{fontSize:20,fontWeight:700,margin:0}}>Publications</h2>
+              <div style={{display:"flex",gap:8}}>
+                {["ALL","URGENT","MONITOR","INFORMATIONAL"].map(f=>(
+                  <button key={f} onClick={()=>setFilter(f)} className="btn" style={{
+                    background:filter===f?"rgba(99,102,241,0.2)":"none",
+                    border:`1px solid ${filter===f?"rgba(99,102,241,0.4)":"rgba(255,255,255,0.08)"}`,
+                    color:filter===f?"#818cf8":"#6b7280",padding:"6px 14px",fontSize:12
+                  }}>{f}</button>
+                ))}
+              </div>
+            </div>
+            {filteredPubs.length===0
+              ?<div className="card p-6" style={{textAlign:"center",color:"#6b7280"}}>No publications match this filter.</div>
+              :filteredPubs.map(p=><PubCard key={p.id} pub={p} onReview={setReviewPub}/>)}
+          </>
+        )}
+
+        {/* REVIEW QUEUE */}
+        {tab==="review"&&(
+          <>
+            <h2 style={{fontSize:20,fontWeight:700,marginBottom:8}}>Review Queue</h2>
+            <p style={{fontSize:13,color:"#6b7280",marginBottom:20}}>
+              Human review before sending to clients. Low/medium confidence AI analyses require approval.
+              This is what protects you legally and builds client trust.
+            </p>
+            {pendingReviews.length===0
+              ?<div className="card p-6" style={{textAlign:"center"}}>
+                <div style={{fontSize:32,marginBottom:8}}>✅</div>
+                <div style={{color:"#22c55e",fontWeight:600}}>All caught up — no pending reviews</div>
+              </div>
+              :pendingReviews.map(p=>(
+                <div key={p.id}>
+                  <PubCard pub={p} onReview={setReviewPub}/>
+                </div>
+              ))}
+          </>
+        )}
+
+        {/* CHECKLISTS */}
+        {tab==="checklists"&&(
+          <>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18}}>
+              <h2 style={{fontSize:20,fontWeight:700,margin:0}}>Action Checklists</h2>
+              <select value={checklistTeam} onChange={e=>setChecklistTeam(e.target.value)} style={{width:180}}>
+                {["ALL","Claims","Compliance","Legal","Actuarial","Operations","Finance","IT","HR","Executive","Underwriting"].map(t=>(
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+            {filteredChecklists.length===0
+              ?<div className="card p-6" style={{textAlign:"center",color:"#6b7280"}}>No open checklist items.</div>
+              :filteredChecklists.map(item=>(
+                <div key={item.id} className="card mb-2" style={{padding:"14px 16px",display:"flex",alignItems:"flex-start",gap:12}}>
+                  <input type="checkbox" defaultChecked={item.completed} style={{width:16,height:16,marginTop:2,flexShrink:0}}/>
+                  <div style={{flex:1}}>
+                    <p style={{margin:"0 0 4px",fontSize:14,color:"#f1f5f9"}}>{item.item}</p>
+                    <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                      <UrgencyBadge urgency={item.urgency}/>
+                      <Badge label={item.source} color="#818cf8"/>
+                      <span style={{fontSize:12,color:"#6b7280"}}>{item.pub_title?.slice(0,60)}...</span>
+                      {item.due_date&&<span style={{fontSize:12,color:"#fbbf24"}}>⏰ {item.due_date}</span>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+          </>
+        )}
+
+        {/* CLIENTS */}
+        {tab==="clients"&&(
+          <>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18}}>
+              <h2 style={{fontSize:20,fontWeight:700,margin:0}}>
+                Clients <span style={{fontSize:13,color:"#6b7280",fontWeight:400,marginLeft:8}}>{clients.length} active · ${totalARR.toLocaleString()}/yr</span>
+              </h2>
+              <button onClick={()=>setShowAddClient(!showAddClient)} className="btn btn-primary">+ Add Client</button>
+            </div>
+
+            {showAddClient&&(
+              <div className="card p-5 mb-5">
+                <h3 style={{fontSize:15,fontWeight:600,marginBottom:14}}>New Client</h3>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
+                  {[["company_name","Company name"],["contact_name","Contact name"],["contact_email","Contact email"]].map(([f,ph])=>(
+                    <input key={f} placeholder={ph} value={newClient[f]}
+                      onChange={e=>setNewClient({...newClient,[f]:e.target.value})}/>
+                  ))}
+                  <select value={newClient.plan} onChange={e=>setNewClient({...newClient,plan:e.target.value})}>
+                    <option value="starter">Starter — $10,000/yr</option>
+                    <option value="professional">Professional — $20,000/yr</option>
+                    <option value="enterprise">Enterprise — $40,000/yr</option>
+                  </select>
+                  <select value={newClient.industry} onChange={e=>setNewClient({...newClient,industry:e.target.value})}>
+                    <option value="insurance">Insurance</option>
+                    <option value="banking">Banking</option>
+                    <option value="both">Both</option>
+                  </select>
+                  <input placeholder="Slack webhook URL (optional)" value={newClient.slack_webhook}
+                    onChange={e=>setNewClient({...newClient,slack_webhook:e.target.value})}/>
+                </div>
+                <button onClick={addClient} className="btn btn-success">Save Client</button>
+              </div>
+            )}
+
+            <div className="card" style={{overflow:"hidden"}}>
+              <table style={{width:"100%",borderCollapse:"collapse"}}>
+                <thead>
+                  <tr style={{background:"rgba(255,255,255,0.03)"}}>
+                    {["Company","Contact","Plan","Industry","ARR","Renewal","Status"].map(h=>(
+                      <th key={h} style={{padding:"12px 16px",textAlign:"left",fontSize:10,color:"#6b7280",letterSpacing:"0.08em",fontWeight:600}}>{h.toUpperCase()}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {clients.map(c=>(
+                    <tr key={c.id} style={{borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
+                      <td style={{padding:"13px 16px",fontWeight:600,color:"#f1f5f9"}}>{c.company_name}</td>
+                      <td style={{padding:"13px 16px",color:"#94a3b8",fontSize:13}}>{c.contact_name}</td>
+                      <td style={{padding:"13px 16px"}}>
+                        <Badge label={c.plan.toUpperCase()} color={PLAN_COLOR[c.plan]||"#818cf8"}/>
+                      </td>
+                      <td style={{padding:"13px 16px",color:"#94a3b8",fontSize:13,textTransform:"capitalize"}}>{c.industry}</td>
+                      <td style={{padding:"13px 16px",color:"#34d399",fontWeight:700}}>${(c.annual_value||0).toLocaleString()}</td>
+                      <td style={{padding:"13px 16px",color:"#94a3b8",fontSize:12}}>{c.renewal_date||"—"}</td>
+                      <td style={{padding:"13px 16px"}}>
+                        <Badge label={c.status} color={c.status==="active"?"#22c55e":"#6b7280"}/>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* ARR progress */}
+            <div className="card p-5 mt-4">
+              <div style={{fontSize:13,color:"#6b7280",marginBottom:8}}>Progress to $100K ARR milestone</div>
+              <div style={{display:"flex",alignItems:"center",gap:12}}>
+                <div style={{flex:1,background:"rgba(255,255,255,0.05)",borderRadius:4,height:10}}>
+                  <div style={{width:`${Math.min((totalARR/100000)*100,100)}%`,background:"linear-gradient(90deg,#6366f1,#34d399)",borderRadius:4,height:10,transition:"width 0.5s"}}/>
+                </div>
+                <span style={{fontWeight:700,color:"#34d399",minWidth:50}}>{Math.round((totalARR/100000)*100)}%</span>
+              </div>
+              <div style={{fontSize:12,color:"#6b7280",marginTop:6}}>
+                ${totalARR.toLocaleString()} of $100,000 — {Math.max(0,Math.ceil((100000-totalARR)/20000))} more clients needed at $20K/yr
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* AUDIT TRAIL */}
+        {tab==="audit"&&(
+          <>
+            <h2 style={{fontSize:20,fontWeight:700,marginBottom:8}}>Audit Trail</h2>
+            <p style={{fontSize:13,color:"#6b7280",marginBottom:20}}>
+              Every action logged with timestamp and actor. This is what you show regulators and enterprise clients to prove compliance.
+            </p>
+            <div className="card" style={{overflow:"hidden"}}>
+              <table style={{width:"100%",borderCollapse:"collapse"}}>
+                <thead>
+                  <tr style={{background:"rgba(255,255,255,0.03)"}}>
+                    {["Timestamp","Event","Actor","Details"].map(h=>(
+                      <th key={h} style={{padding:"11px 16px",textAlign:"left",fontSize:10,color:"#6b7280",letterSpacing:"0.08em",fontWeight:600}}>{h.toUpperCase()}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {audit.map(a=>(
+                    <tr key={a.id} style={{borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
+                      <td style={{padding:"11px 16px",color:"#6b7280",fontSize:12,whiteSpace:"nowrap"}}>{new Date(a.created_at).toLocaleString()}</td>
+                      <td style={{padding:"11px 16px"}}>
+                        <Badge label={a.event_type} color="#818cf8"/>
+                      </td>
+                      <td style={{padding:"11px 16px",color:"#94a3b8",fontSize:13}}>{a.actor}</td>
+                      <td style={{padding:"11px 16px",color:"#6b7280",fontSize:12}}>{a.details}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+      </div>
+    </div>
+  );
+}
+ReactDOM.render(<App/>,document.getElementById("root"));
+</script>
+</body>
+</html>
