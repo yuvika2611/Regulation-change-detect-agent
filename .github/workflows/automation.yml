@@ -19,12 +19,22 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Create database directory
+        run: mkdir -p database
+
+      - name: Create .env file from secrets
+        run: |
+          cat << EOF > .env
+          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          GMAIL_USER=${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD=${{ secrets.GMAIL_APP_PASSWORD }}
+          TO_EMAIL=${{ secrets.TO_EMAIL }}
+          USE_GEMINI=true
+          EOF
 
       - name: Run Agent
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GMAIL_USER: ${{ secrets.GMAIL_USER }}
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-          TO_EMAIL: ${{ secrets.TO_EMAIL }}
         run: python agents/orchestrator.py
