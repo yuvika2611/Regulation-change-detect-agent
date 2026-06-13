@@ -6,6 +6,8 @@ Loads .env explicitly — no VS Code env injection needed
 import os, sys, json
 from datetime import datetime
 from pathlib import Path
+from dotenv import load_dotenv
+load_dotenv()
 
 # Load .env explicitly
 ROOT_DIR = Path(__file__).parent.parent.absolute()
@@ -48,6 +50,109 @@ def mark_seen(pub_id):
     db.execute("INSERT OR IGNORE INTO seen_publications (pub_id) VALUES (?)", (pub_id,))
     db.commit()
 
+
+def filter_noise(publications):
+    """
+    Second-pass noise filter that runs AFTER scraping.
+    Catches anything the scraper missed.
+    Returns only publications worth analyzing.
+    """
+    # ── Titles that are definitely NOT regulatory changes ──
+    NOISE_TITLES = [
+        # These are static pages, not regulatory updates
+        "enforcement action search",
+        "bank secrecy act",
+        "community reinvestment act",
+        "comptroller's handbook",
+        "corporate applications search",
+        "financial institution lists",
+        "file a complaint",
+        "check license",
+        "types of insurance",
+        "consumer information",
+        "resource center",
+        "money market fund list",
+        "competition database report",
+        # Generic non-actionable items
+        "careers",
+        "banknet",
+        "helpwithmybank",
+    ]
+    
+    # ── URL patterns that indicate static/nav pages ──
+    NOISE_URL_PATTERNS = [
+        "/about",
+        "/contact",
+        "/careers",
+        "/consumer",
+        "/sitemap",
+        "/accessibility",
+        "/privacy",
+        "/es/",          # Spanish language pages
+        "/login",
+        "#",             # Anchor links (not real pages)
+    ]
+    
+    filtered = []
+    removed = []
+    
+    for pub in publications:
+        title_lower = (pub.get("title") or "").lower().strip()
+        url_lower = (pub.get("url") or "").lower()
+        
+        # ── Check 1: Title too short ──
+        if len(title_lower) < 15:
+            removed.append(f"TOO SHORT: {pub.get('title','')}")
+            continue
+        
+        # ── Check 2: Known noise title ──
+        if any(noise in title_lower for noise in NOISE_TITLES):
+            removed.append(f"NOISE TITLE: {pub.get('title','')[:60]}")
+            continue
+        
+        # ── Check 3: URL pattern matches noise ──
+        if any(pattern in url_lower for pattern in NOISE_URL_PATTERNS):
+            removed.append(f"NOISE URL: {pub.get('title','')[:60]}")
+            continue
+        
+        # ── Check 4: Title is just a source name repeated ──
+        source_lower = (pub.get("source") or "").lower()
+        if title_lower == source_lower or title_lower in ["occ", "sec", "naic", "nydfs", "fincen"]:
+            removed.append(f"SOURCE NAME ONLY: {pub.get('title','')}")
+            continue
+        
+        # ── Check 5: Duplicate detection (fuzzy) ──
+        # If a very similar title already exists in filtered, skip
+        is_duplicate = False
+        for existing in filtered:
+            existing_title = (existing.get("title") or "").lower()
+            # If 80%+ of words match, it's a duplicate
+            words_new = set(title_lower.split())
+            words_existing = set(existing_title.split())
+            if len(words_new) > 3 and len(words_existing) > 3:
+                overlap = len(words_new & words_existing)
+                similarity = overlap / max(len(words_new), len(words_existing))
+                if similarity > 0.8:
+                    is_duplicate = True
+                    removed.append(f"DUPLICATE: {pub.get('title','')[:60]}")
+                    break
+        
+        if is_duplicate:
+            continue
+        
+        # ── Passed all checks — keep it ──
+        filtered.append(pub)
+    
+    # Log what was removed (helpful for debugging)
+    if removed:
+        print(f"\n🧹 Noise filter removed {len(removed)} items:")
+        for r in removed[:10]:  # Show first 10
+            print(f"   ❌ {r}")
+        if len(removed) > 10:
+            print(f"   ... and {len(removed) - 10} more")
+    
+    print(f"✅ Kept {len(filtered)} quality publications")
+    return filtered
 
 def save_publication(pub):
     db = get_db()
@@ -97,11 +202,11 @@ def validate_config():
     gmail  = os.environ.get("GMAIL_USER", "")
     app_pw = os.environ.get("GMAIL_APP_PASSWORD", "")
     to     = os.environ.get("TO_EMAIL", "")
-    print(f"   Gemini API:   {'✅ set' if gemini and gemini != 'your_key_here' else '❌ MISSING'}")
+    print(f"   Gemini API:   {'✅ set' if gemini and gemini != 'GEMINI_API_KEY' else '❌ MISSING'}")
     print(f"   Gmail user:   {'✅ ' + gmail if gmail else '❌ MISSING'}")
     print(f"   App password: {'✅ set' if app_pw else '⚠️  missing'}")
     print(f"   Recipient:    {to or gmail or '❌ MISSING'}")
-    if not gemini or gemini == "your_key_here":
+    if not gemini or gemini == "GEMINI_API_KEY":
         print("\n   ❌ GEMINI_API_KEY missing. Get free key at: aistudio.google.com")
         print("   Then run: python setup.py\n")
         return False
@@ -127,9 +232,11 @@ def run_daily_check(skip_email=False):
     ]
     print(f"\n🆕 New publications: {len(new_pubs)}")
 
+    new_pubs = filter_noise(new_pubs)
+    print(f"📋 Publications to analyze: {len(new_pubs)}")
+
     if not new_pubs:
-        print("✅ Nothing new today.")
-        print("   Tip: run 'python setup.py' to reset\n")
+        print("✅ Nothing new today (all items were noise or already seen).")
         return {"new": 0}
 
     # Step 2: Analyze with Gemini 2.0 Flash

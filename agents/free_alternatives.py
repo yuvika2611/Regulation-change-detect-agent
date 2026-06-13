@@ -41,22 +41,18 @@ def analyze_with_gemini(publications: list) -> list:
         print("  ⚠️ Gemini disabled — using fallback analysis")
         return _smart_fallback(publications)
     
-    # ✅ ADD HERE
     api_key = os.environ.get("GEMINI_API_KEY", "")
     if not api_key:
         print("  ⚠️ No Gemini API key found")
         return _smart_fallback(publications)
 
-    # keeping the Gemini code below (unchanged)
-
     try:
-        import google.generativeai as genai
+        from google import genai
     except ImportError:
-        os.system("pip install google-generativeai -q")
-        import google.generativeai as genai
+        os.system("pip install google-genai -q")
+        from google import genai
 
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    client = genai.Client(api_key=api_key)
 
     if not publications:
         return []
@@ -67,7 +63,7 @@ def analyze_with_gemini(publications: list) -> list:
         pub_text += f"    TITLE: {pub.get('title','')}\n"
         pub_text += f"    TYPE: {pub.get('type','')}\n"
         if pub.get("abstract"):
-            pub_text += f"    ABSTRACT: {pub['abstract']}\n"
+            pub_text += f"    ABSTRACT: {pub['abstract'][:300]}\n"
         if pub.get("agency"):
             pub_text += f"    AGENCY: {pub['agency']}\n"
 
@@ -76,23 +72,27 @@ Analyze these regulatory publications. Return a JSON array only.
 
 For each publication return:
 - "index": the [N] number
-- "summary": 2-3 sentence plain English explanation
+- "summary": 2-3 sentence plain English explanation of what SPECIFICALLY changed or was announced. Do NOT just repeat the title.
 - "urgency": exactly "URGENT", "MONITOR", or "INFORMATIONAL"
 - "teams": array from ["Claims","Compliance","Legal","Actuarial","Operations","Finance","IT","HR","Executive","Underwriting"]
-- "checklist": array of 2-4 specific action items
+- "checklist": array of 2-4 SPECIFIC action items (not generic advice)
 - "deadline": deadline string or null
 - "impact": one sentence on business impact
 - "confidence": "high", "medium", or "low"
+
+IMPORTANT: Do NOT write generic summaries. Each summary must explain what specifically changed.
 
 Return ONLY the JSON array. No markdown. No text before or after.
 
 Publications:
 {pub_text}"""
 
-    # Try with retry on rate limit
     for attempt in range(3):
         try:
-            response = model.generate_content(prompt)
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt
+            )
             raw = response.text.strip()
             if raw.startswith("```"):
                 raw = raw.split("```")[1]
@@ -117,26 +117,22 @@ Publications:
 
         except Exception as e:
             err = str(e)
-            if "429" in err:
-                wait = 35 * (attempt + 1)
-                print(f"  ⏳ Rate limit hit — waiting {wait}s before retry {attempt+1}/3...")
+            if "429" in err or "RESOURCE_EXHAUSTED" in err:
+                wait = 60 * (attempt + 1)  # 60s, 120s, 180s
+                print(f"  ⏳ Rate limit — waiting {wait}s (attempt {attempt+1}/3)...")
                 time.sleep(wait)
             else:
                 print(f"  ⚠️  Gemini error: {e}")
                 break
 
-    print("  ⚠️  Gemini unavailable — using smart keyword analysis")
-    print("  ⚠️  Using fallback (no AI)")
+    print("  ⚠️  Gemini unavailable — using fallback")
     return _smart_fallback(publications)
 
 
 def generate_digest_summary_gemini(publications: list) -> str:
-    """Generate executive summary with Gemini, fallback to auto-summary."""
-    
     use_gemini = os.environ.get("USE_GEMINI", "false").lower() == "true"
     
     if not use_gemini:
-        print("  ⚠️ Gemini disabled — using fallback summary")
         return _auto_summary(publications)
 
     api_key = os.environ.get("GEMINI_API_KEY", "")
@@ -144,9 +140,8 @@ def generate_digest_summary_gemini(publications: list) -> str:
         return _auto_summary(publications)
 
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-2.0-flash")
+        from google import genai
+        client = genai.Client(api_key=api_key)
 
         urgent  = [p for p in publications if p.get("urgency") == "URGENT"]
         monitor = [p for p in publications if p.get("urgency") == "MONITOR"]
@@ -155,24 +150,23 @@ def generate_digest_summary_gemini(publications: list) -> str:
             for p in publications[:15]
         ])
 
-        prompt = f"""Write a 4-5 sentence executive summary of today's regulatory activity for a US compliance team.
-{len(urgent)} urgent, {len(monitor)} to monitor out of {len(publications)} total.
+        prompt = f"""Write a 4-5 sentence executive summary of today's regulatory activity 
+for a US compliance team. {len(urgent)} urgent, {len(monitor)} to monitor out of 
+{len(publications)} total.
 Publications: {items}
 Be direct. Name the most important items. Flowing prose, no bullet points."""
 
-        try:
-            response = model.generate_content(prompt)
-            return response.text.strip()
-
-        except Exception as e:
-            if "429" in str(e):
-                print("  ⚠️ Gemini rate limited — using fallback")
-                return _auto_summary(publications)
-            else:
-                raise
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt
+        )
+        return response.text.strip()
 
     except Exception as e:
-        print(f"  ⚠️ Summary error: {e}")
+        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+            print("  ⚠️ Gemini rate limited — using fallback summary")
+        else:
+            print(f"  ⚠️ Summary error: {e}")
 
     return _auto_summary(publications)
 
