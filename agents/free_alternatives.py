@@ -228,58 +228,97 @@ def send_email_gmail(publications: list, executive_summary: str) -> bool:
 
 def _build_html(publications, executive_summary, today, urgent, monitor, info):
     def pub_block(p):
-        colors = {"URGENT": "#ef4444", "MONITOR": "#f59e0b", "INFORMATIONAL": "#22c55e"}
-        c = colors.get(p.get("urgency", "INFORMATIONAL"), "#22c55e")
+        colors = {"URGENT": "#dc2626", "MONITOR": "#d97706", "INFORMATIONAL": "#059669"}
+        bg_colors = {"URGENT": "#fef2f2", "MONITOR": "#fffbeb", "INFORMATIONAL": "#ecfdf5"}
+        
+        c = colors.get(p.get("urgency", "INFORMATIONAL"), "#059669")
+        bg = bg_colors.get(p.get("urgency", "INFORMATIONAL"), "#ecfdf5")
+        
         checklist_html = "".join(
-            f"<li style='margin:4px 0'>{_clean(item)}</li>"
+            f"<li style='margin-bottom: 8px; color: #374151; font-size: 14px;'>✓ {_clean(item)}</li>"
             for item in (p.get("checklist") or [])
         )
-        checklist = f"<ul style='margin:8px 0 0 16px'>{checklist_html}</ul>" if checklist_html else ""
-        deadline  = f"<p style='color:#dc2626;font-size:12px;margin:6px 0 0'>Deadline: {_clean(p['deadline'])}</p>" if p.get("deadline") else ""
-        src_link  = f'<a href="{p.get("url","")}" style="font-size:12px;color:#2563eb">View source</a>' if p.get("url") else ""
+        checklist = f"<ul style='list-style-type: none; padding: 0; margin: 15px 0; border-top: 1px solid #e5e7eb; padding-top: 15px;'>{checklist_html}</ul>" if checklist_html else ""
+        
+        deadline = f"<div style='margin-top: 15px; padding: 10px; background-color: #fee2e2; color: #991b1b; border-radius: 6px; font-weight: bold; font-size: 13px;'>⏰ Deadline: {_clean(p['deadline'])}</div>" if p.get("deadline") else ""
+        
+        src_link = f'<a href="{p.get("url","")}" style="display: inline-block; margin-top: 15px; text-decoration: none; color: #4f46e5; font-weight: bold; font-size: 14px;">Read Full Publication →</a>' if p.get("url") else ""
+        
         return f"""
-        <div style="border-left:3px solid {c};padding:14px 16px;margin:10px 0;background:#f9fafb;border-radius:0 8px 8px 0">
-          <div style="margin-bottom:6px">
-            <span style="background:{c}20;color:{c};font-size:11px;padding:2px 8px;border-radius:4px;font-weight:700">{p.get("urgency","INFO")}</span>
-            <span style="background:#6366f120;color:#4f46e5;font-size:11px;padding:2px 8px;border-radius:4px;margin-left:6px">{_clean(p.get("source",""))}</span>
+        <div style="background-color: #ffffff; border: 1px solid #e5e7eb; border-left: 4px solid {c}; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+          <div style="margin-bottom: 12px;">
+            <span style="background-color: {bg}; color: {c}; font-size: 12px; font-weight: bold; padding: 4px 10px; border-radius: 20px; text-transform: uppercase;">{p.get("urgency","INFO")}</span>
+            <span style="color: #6b7280; font-size: 13px; margin-left: 10px; font-weight: 500;">{_clean(p.get("source",""))}</span>
           </div>
-          <p style="font-weight:600;font-size:14px;color:#111827;margin:0 0 6px">{_clean(p.get("title",""))}</p>
-          <p style="font-size:13px;color:#4b5563;margin:0 0 6px;line-height:1.6">{_clean(p.get("summary","Manual review required."))}</p>
+          <h3 style="margin: 0 0 10px 0; color: #111827; font-size: 18px; line-height: 1.4;">{_clean(p.get("title",""))}</h3>
+          <p style="margin: 0; color: #4b5563; font-size: 15px; line-height: 1.6;">{_clean(p.get("summary","Manual review required."))}</p>
           {checklist}
-          <p style="font-size:12px;color:#6b7280;margin:8px 0 4px">Action: <strong>{_clean(p.get("teams","Compliance"))}</strong></p>
+          <div style="margin-top: 15px; font-size: 13px; color: #6b7280;">
+            <span style="background-color: #f3f4f6; padding: 4px 8px; border-radius: 4px;">👥 <strong>Action Required By:</strong> {_clean(p.get("teams","Compliance"))}</span>
+          </div>
           {deadline}
           {src_link}
         </div>"""
 
-    urgent_html  = "".join(pub_block(p) for p in urgent)  or "<p style='color:#6b7280'>None today.</p>"
-    monitor_html = "".join(pub_block(p) for p in monitor) or "<p style='color:#6b7280'>None today.</p>"
-    info_html    = "".join(pub_block(p) for p in info)    or "<p style='color:#6b7280'>None today.</p>"
+    urgent_html  = "".join(pub_block(p) for p in urgent)  or "<p style='color:#6b7280; font-style: italic;'>No urgent items today.</p>"
+    monitor_html = "".join(pub_block(p) for p in monitor) or "<p style='color:#6b7280; font-style: italic;'>No items to monitor today.</p>"
+    info_html    = "".join(pub_block(p) for p in info)    or "<p style='color:#6b7280; font-style: italic;'>No informational items today.</p>"
 
     return f"""<!DOCTYPE html>
-<html><head><meta charset="UTF-8"></head>
-<body style="font-family:Arial,sans-serif;max-width:700px;margin:0 auto;padding:20px;color:#111827">
-  <div style="background:#0f172a;color:white;padding:24px;border-radius:12px 12px 0 0">
-    <h1 style="margin:0;font-size:20px">ComplianceAI - Daily Digest</h1>
-    <p style="margin:6px 0 0;color:#94a3b8;font-size:13px">{today}</p>
-    <div style="display:flex;gap:24px;margin-top:14px">
-      <div><span style="color:#ef4444;font-size:22px;font-weight:700">{len(urgent)}</span><br><span style="color:#94a3b8;font-size:11px">URGENT</span></div>
-      <div><span style="color:#f59e0b;font-size:22px;font-weight:700">{len(monitor)}</span><br><span style="color:#94a3b8;font-size:11px">MONITOR</span></div>
-      <div><span style="color:#22c55e;font-size:22px;font-weight:700">{len(info)}</span><br><span style="color:#94a3b8;font-size:11px">INFO</span></div>
-      <div><span style="color:white;font-size:22px;font-weight:700">{len(publications)}</span><br><span style="color:#94a3b8;font-size:11px">TOTAL</span></div>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f9fafb; margin: 0; padding: 20px; color: #111827;">
+  <div style="max-width: 650px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+    
+    <!-- HEADER -->
+    <div style="background-color: #0f172a; padding: 30px 20px; text-align: center;">
+      <h1 style="color: #ffffff; margin: 0; font-size: 24px; letter-spacing: -0.5px;">⚖️ ComplianceAI Daily Digest</h1>
+      <p style="color: #94a3b8; margin: 8px 0 0 0; font-size: 14px;">{today}</p>
     </div>
+
+    <!-- STATS ROW -->
+    <div style="display: flex; border-bottom: 1px solid #e5e7eb; background-color: #f8fafc;">
+      <div style="flex: 1; text-align: center; padding: 15px; border-right: 1px solid #e5e7eb;">
+        <div style="font-size: 24px; font-weight: bold; color: #dc2626;">{len(urgent)}</div>
+        <div style="font-size: 11px; color: #64748b; text-transform: uppercase; font-weight: bold; margin-top: 4px;">Urgent</div>
+      </div>
+      <div style="flex: 1; text-align: center; padding: 15px; border-right: 1px solid #e5e7eb;">
+        <div style="font-size: 24px; font-weight: bold; color: #d97706;">{len(monitor)}</div>
+        <div style="font-size: 11px; color: #64748b; text-transform: uppercase; font-weight: bold; margin-top: 4px;">Monitor</div>
+      </div>
+      <div style="flex: 1; text-align: center; padding: 15px;">
+        <div style="font-size: 24px; font-weight: bold; color: #059669;">{len(info)}</div>
+        <div style="font-size: 11px; color: #64748b; text-transform: uppercase; font-weight: bold; margin-top: 4px;">Info</div>
+      </div>
+    </div>
+
+    <!-- EXECUTIVE SUMMARY -->
+    <div style="padding: 25px 20px; background-color: #eef2ff; border-bottom: 1px solid #e5e7eb;">
+      <h2 style="margin: 0 0 10px 0; font-size: 16px; color: #4338ca;">Executive Summary</h2>
+      <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #374151;">{_clean(executive_summary)}</p>
+    </div>
+
+    <!-- CONTENT -->
+    <div style="padding: 30px 20px;">
+      <h2 style="font-size: 18px; color: #dc2626; margin: 0 0 15px 0; border-bottom: 2px solid #fecaca; padding-bottom: 8px;">🔴 URGENT: Action Required</h2>
+      {urgent_html}
+      
+      <h2 style="font-size: 18px; color: #d97706; margin: 40px 0 15px 0; border-bottom: 2px solid #fde68a; padding-bottom: 8px;">🟡 MONITOR: Watch Closely</h2>
+      {monitor_html}
+      
+      <h2 style="font-size: 18px; color: #059669; margin: 40px 0 15px 0; border-bottom: 2px solid #a7f3d0; padding-bottom: 8px;">🟢 INFORMATIONAL</h2>
+      {info_html}
+    </div>
+
+    <!-- FOOTER -->
+    <div style="background-color: #f1f5f9; padding: 20px; text-align: center; border-top: 1px solid #e5e7eb;">
+      <p style="margin: 0; font-size: 12px; color: #64748b;">Powered by ComplianceAI • Generated by Gemini 2.0</p>
+      <p style="margin: 5px 0 0 0; font-size: 11px; color: #94a3b8;">This is an AI-generated summary. Always consult legal counsel before taking compliance action.</p>
+    </div>
+
   </div>
-  <div style="background:#f1f5f9;padding:14px 18px;border-left:4px solid #6366f1">
-    <p style="margin:0;font-size:13px;line-height:1.7"><strong>Summary:</strong> {_clean(executive_summary)}</p>
-  </div>
-  <div style="padding:16px 0">
-    <h2 style="font-size:15px;color:#ef4444;margin:16px 0 8px">URGENT - Action Required</h2>{urgent_html}
-    <h2 style="font-size:15px;color:#f59e0b;margin:20px 0 8px">MONITOR - Watch Closely</h2>{monitor_html}
-    <h2 style="font-size:15px;color:#22c55e;margin:20px 0 8px">INFORMATIONAL</h2>{info_html}
-  </div>
-  <p style="font-size:11px;color:#94a3b8;text-align:center;border-top:1px solid #e2e8f0;padding-top:12px">
-    ComplianceAI - Powered by Gemini AI and Gmail
-  </p>
-</body></html>"""
+</body>
+</html>"""
 
 
 def _print_console(publications, executive_summary):
